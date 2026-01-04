@@ -1,36 +1,120 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Map Tracking Application
 
-## Getting Started
+A Next.js application for tracking user location, recording trips, and providing navigation using Mapbox GL JS.
 
-First, run the development server:
+## Features
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- **Real-time Location Tracking**: Continuous GPS tracking with visual indicators
+- **Trip Recording**: Record and save trips with statistics (distance, duration, average speed)
+- **Trip History**: View, manage, and export saved trips (JSON/GPX formats)
+- **Navigation**: Turn-by-turn navigation with route calculation
+- **Offline Support**: Service worker for caching map tiles
+
+## Prerequisites
+
+- Node.js 18+ and npm
+- A Mapbox access token ([Get one here](https://account.mapbox.com/access-tokens/))
+
+## Setup
+
+1. **Install dependencies:**
+   ```bash
+   npm install
+   ```
+
+2. **Configure Mapbox token:**
+   - Create a `.env.local` file in the root directory
+   - Add your Mapbox access token:
+     ```
+     NEXT_PUBLIC_MAPBOX_TOKEN=your_mapbox_token_here
+     ```
+
+3. **Run the development server:**
+   ```bash
+   npm run dev
+   ```
+
+4. **Open your browser:**
+   - Navigate to [http://localhost:3000](http://localhost:3000)
+   - Allow location permissions when prompted
+
+## Usage
+
+### Recording a Trip
+
+1. Click "Start Recording Trip" button on the map
+2. Move around to record your location
+3. Click "Save Trip" when finished (or "Cancel" to discard)
+4. Optionally provide a name for your trip
+
+### Viewing Trip History
+
+1. Click "Trip History" in the top right corner
+2. View all saved trips with statistics
+3. Click "View on Map" to see the route
+4. Export trips as JSON or GPX files
+5. Delete unwanted trips
+
+### Navigation
+
+1. Use the search box in the top left to find a destination
+2. A route will be calculated automatically
+3. Click "Start" to begin navigation
+4. Follow the turn-by-turn instructions
+5. Click "Stop" to end navigation
+
+## Project Structure
+
+```
+map-tracking/
+├── app/
+│   ├── layout.tsx          # Root layout with providers
+│   ├── page.tsx            # Main map view
+│   └── history/
+│       └── page.tsx        # Trip history page
+├── components/
+│   ├── Map/
+│   │   ├── MapboxMap.tsx           # Main map component
+│   │   ├── LocationTracker.tsx    # GPS tracking
+│   │   ├── NavigationControls.tsx  # Navigation UI
+│   │   └── TripRecordingControls.tsx # Trip recording
+│   └── History/
+│       └── TripHistory.tsx         # Trip history list
+├── hooks/
+│   ├── useGeolocation.ts   # Browser geolocation hook
+│   ├── useTripHistory.ts   # Trip management hook
+│   └── useNavigation.ts   # Navigation state hook
+├── lib/
+│   ├── mapbox.ts          # Mapbox configuration
+│   ├── location.ts        # Location utilities
+│   ├── navigation.ts      # Navigation logic
+│   └── storage.ts         # Trip storage utilities
+├── types/
+│   └── index.ts           # TypeScript type definitions
+└── public/
+    └── sw.js              # Service worker for offline support
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Technologies
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- **Next.js 16** - React framework with App Router
+- **Mapbox GL JS** - Interactive maps
+- **TypeScript** - Type safety
+- **Tailwind CSS** - Styling
+- **Zustand** - State management (optional)
+- **date-fns** - Date utilities
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Browser Support
 
-## Learn More
+- Modern browsers with Geolocation API support
+- HTTPS required for geolocation (or localhost for development)
 
-To learn more about Next.js, take a look at the following resources:
+## Storage
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- Trip data is stored in browser localStorage
+- Maximum storage size: 5MB (oldest trips are removed when limit is reached)
+- Map tiles are cached via Service Worker for offline use
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## License
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+MIT

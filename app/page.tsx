@@ -1,65 +1,190 @@
-import Image from "next/image";
+'use client';
+
+import { useState, useEffect } from 'react';
+import MapboxMap from '@/components/Map/MapboxMap';
+import LocationTracker from '@/components/Map/LocationTracker';
+import NavigationControls from '@/components/Map/NavigationControls';
+import CenterLocationButton from '@/components/Map/CenterLocationButton';
+import TripRecordingButton from '@/components/Map/TripRecordingButton';
+import MenuButton from '@/components/Map/MenuButton';
+import DiscoverButton from '@/components/Map/DiscoverButton';
+import SpeedButton from '@/components/Map/SpeedButton';
+import ActionBar from '@/components/ActionBar';
+import SearchPanel from '@/components/SearchPanel';
+import { useMap } from '@/contexts/MapContext';
+import { useTripHistory } from '@/hooks/useTripHistory';
+import { useGeolocation } from '@/hooks/useGeolocation';
+import { LocationPoint, Trip } from '@/types';
+import mapboxgl from 'mapbox-gl';
 
 export default function Home() {
+  const { map } = useMap();
+  const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
+  const [tripLayerId, setTripLayerId] = useState<string | null>(null);
+  const { addLocationToCurrentTrip } = useTripHistory();
+  
+  const { position } = useGeolocation({
+    onLocationUpdate: (location: LocationPoint) => {
+      addLocationToCurrentTrip(location);
+    },
+  });
+
+  // Load selected trip from sessionStorage (client-side only)
+  useEffect(() => {
+    if (globalThis.window) {
+      const tripData = globalThis.window.sessionStorage.getItem('selectedTrip');
+      if (tripData) {
+        try {
+          const trip = JSON.parse(tripData);
+          setSelectedTrip(trip);
+          globalThis.window.sessionStorage.removeItem('selectedTrip');
+        } catch (error) {
+          console.error('Error parsing selected trip:', error);
+        }
+      }
+    }
+  }, []);
+
+  const handleLocationUpdate = (location: LocationPoint) => {
+    addLocationToCurrentTrip(location);
+  };
+
+  const handleCenterMap = () => {
+    if (map && position) {
+      map.flyTo({
+        center: [position.longitude, position.latitude],
+        zoom: 16, // Optimal zoom for location tracking
+        duration: 1000,
+      });
+    }
+  };
+
+  const handleSelectLocation = (coordinates: [number, number], name: string) => {
+    // This will be handled by NavigationControls to calculate route
+    // The SearchPanel will trigger the geocoder result event
+  };
+
+  // Draw selected trip on map
+  useEffect(() => {
+    if (!map || !selectedTrip) return;
+
+    const sourceId = 'selected-trip';
+    const layerId = 'selected-trip-line';
+
+    // Remove existing trip if any
+    if (tripLayerId && map.getLayer(tripLayerId)) {
+      map.removeLayer(tripLayerId);
+    }
+    if (map.getSource(sourceId)) {
+      map.removeSource(sourceId);
+    }
+
+    // Create line from trip locations
+    const coordinates = selectedTrip.locations.map(
+      (loc) => [loc.longitude, loc.latitude] as [number, number]
+    );
+
+    map.addSource(sourceId, {
+      type: 'geojson',
+      data: {
+        type: 'Feature',
+        geometry: {
+          type: 'LineString',
+          coordinates,
+        },
+        properties: {},
+      },
+    });
+
+    map.addLayer({
+      id: layerId,
+      type: 'line',
+      source: sourceId,
+      layout: {
+        'line-join': 'round',
+        'line-cap': 'round',
+      },
+      paint: {
+        'line-color': '#10b981',
+        'line-width': 4,
+        'line-opacity': 0.8,
+      },
+    });
+
+    setTripLayerId(layerId);
+
+    // Fit map to trip bounds
+    if (coordinates.length > 0) {
+      const bounds = coordinates.reduce(
+        (bounds, coord) => bounds.extend(coord),
+        new mapboxgl.LngLatBounds(coordinates[0], coordinates[0])
+      );
+
+      map.fitBounds(bounds, {
+        padding: 50,
+        duration: 1000,
+      });
+    }
+
+    return () => {
+      if (map.getLayer(layerId)) {
+        map.removeLayer(layerId);
+      }
+      if (map.getSource(sourceId)) {
+        map.removeSource(sourceId);
+      }
+    };
+  }, [map, selectedTrip, tripLayerId]);
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+    <div className="relative w-full h-screen flex flex-col bg-white">
+      {/* Map Section - Takes 2/3 of screen */}
+      <div className="relative flex-1" style={{ height: '66.67%' }}>
+        <MapboxMap>
+          {map && (
+            <>
+              <LocationTracker
+                map={map}
+                onLocationUpdate={handleLocationUpdate}
+                followUser={!selectedTrip}
+                showPath={true}
+              />
+              <NavigationControls
+                map={map}
+                currentLocation={
+                  position
+                    ? [position.longitude, position.latitude]
+                    : null
+                }
+              />
+              <CenterLocationButton
+                position={position}
+                onCenterMap={handleCenterMap}
+              />
+              <TripRecordingButton />
+              <MenuButton />
+              <DiscoverButton />
+              <SpeedButton position={position} />
+            </>
+          )}
+        </MapboxMap>
+      </div>
+
+      {/* Action Bar - Takes 1/3 of screen */}
+      <div className="flex-shrink-0" style={{ height: '33.33%' }}>
+        <ActionBar />
+      </div>
+
+      {/* Search Panel */}
+      <SearchPanel
+        currentLocation={
+          position
+            ? [position.longitude, position.latitude]
+            : null
+        }
+        map={map}
+        onSelectLocation={handleSelectLocation}
+      />
     </div>
   );
 }
