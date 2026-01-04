@@ -6,11 +6,11 @@ import { LocationPoint } from '@/types';
 import { useGeolocation } from '@/hooks/useGeolocation';
 
 interface LocationTrackerProps {
-  map: mapboxgl.Map | null;
-  onLocationUpdate?: (location: LocationPoint) => void;
-  followUser?: boolean;
-  showAccuracyCircle?: boolean;
-  showPath?: boolean; // Show movement trail
+  readonly map: mapboxgl.Map | null;
+  readonly onLocationUpdate?: (location: LocationPoint) => void;
+  readonly followUser?: boolean;
+  readonly showAccuracyCircle?: boolean;
+  readonly showPath?: boolean; // Show movement trail
 }
 
 export default function LocationTracker({
@@ -33,7 +33,6 @@ export default function LocationTracker({
     position,
     isTracking,
     startTracking,
-    stopTracking,
     error,
   } = useGeolocation({
     onLocationUpdate,
@@ -213,16 +212,16 @@ export default function LocationTracker({
       if (map) {
         try {
           // Check if map is still valid before accessing
-          if (map.getLayer && map.getLayer(layerId)) {
+          if (map.getLayer?.(layerId)) {
             map.removeLayer(layerId);
           }
-          if (map.getSource && map.getSource(sourceId)) {
+          if (map.getSource?.(sourceId)) {
             map.removeSource(sourceId);
           }
-          if (map.getLayer && map.getLayer(pathLayerId)) {
+          if (map.getLayer?.(pathLayerId)) {
             map.removeLayer(pathLayerId);
           }
-          if (map.getSource && map.getSource(pathSourceId)) {
+          if (map.getSource?.(pathSourceId)) {
             map.removeSource(pathSourceId);
           }
         } catch (error) {
@@ -234,201 +233,142 @@ export default function LocationTracker({
     };
   }, [map, showAccuracyCircle, layerId, sourceId, pathLayerId, pathSourceId]);
 
+  // Helper function to create marker element
+  const createMarkerElement = (): HTMLDivElement => {
+    const el = document.createElement('div');
+    el.className = 'user-location-marker';
+    
+    const outerCircle = document.createElement('div');
+    outerCircle.style.cssText = 'width: 40px; height: 40px; border-radius: 50%; background-color: #4285f4; opacity: 0.3; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); animation: pulse 2s cubic-bezier(0.4, 0, 0.2, 1) infinite;';
+    
+    const middleCircle = document.createElement('div');
+    middleCircle.style.cssText = 'width: 20px; height: 20px; border-radius: 50%; background-color: #4285f4; opacity: 0.5; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);';
+    
+    const innerDot = document.createElement('div');
+    innerDot.style.cssText = 'width: 12px; height: 12px; border-radius: 50%; background-color: #ffffff; border: 2px solid #4285f4; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); box-shadow: 0 2px 4px rgba(0,0,0,0.3); z-index: 3;';
+    
+    const arrow = document.createElement('div');
+    arrow.className = 'heading-arrow';
+    arrow.style.cssText = 'width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-bottom: 16px solid #4285f4; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) translateY(-18px); transform-origin: center bottom; opacity: 0; transition: opacity 0.3s ease, transform 0.3s ease-out; z-index: 2;';
+    arrowRef.current = arrow;
+    
+    el.style.cssText = 'width: 40px; height: 40px; position: relative; cursor: pointer; z-index: 1000;';
+    
+    el.appendChild(outerCircle);
+    el.appendChild(middleCircle);
+    el.appendChild(arrow);
+    el.appendChild(innerDot);
+    
+    return el;
+  };
+
+  // Helper function to update arrow heading
+  const updateArrowHeading = (heading: number | null | undefined) => {
+    if (!arrowRef.current) return;
+    
+    if (heading !== null && heading !== undefined) {
+      arrowRef.current.style.transform = `translate(-50%, -50%) translateY(-18px) rotate(${heading}deg)`;
+      arrowRef.current.style.opacity = '1';
+    } else {
+      arrowRef.current.style.opacity = '0';
+    }
+  };
+
+  // Helper function to update accuracy circle
+  const updateAccuracyCircle = (map: mapboxgl.Map, lngLat: [number, number], accuracy: number, latitude: number) => {
+    if (!showAccuracyCircle || !accuracy) return;
+    
+    try {
+      const source = map.getSource(sourceId) as mapboxgl.GeoJSONSource;
+      if (!source) return;
+      
+      source.setData({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: lngLat },
+        properties: {},
+      });
+
+      const metersPerPixel = (40075017 * Math.cos((latitude * Math.PI) / 180)) / (256 * Math.pow(2, map.getZoom()));
+      const radiusInPixels = accuracy / metersPerPixel;
+
+      if (map.getLayer?.(layerId)) {
+        map.setPaintProperty(layerId, 'circle-radius', radiusInPixels);
+      }
+    } catch (error) {
+      console.warn('Error updating accuracy circle:', error);
+    }
+  };
+
+  // Helper function to update movement path
+  const updateMovementPath = (map: mapboxgl.Map, lngLat: [number, number]) => {
+    if (!showPath) return;
+    
+    try {
+      pathRef.current.push(lngLat);
+      if (pathRef.current.length > 100) {
+        pathRef.current.shift();
+      }
+
+      const pathSource = map.getSource(pathSourceId) as mapboxgl.GeoJSONSource;
+      if (pathSource && pathRef.current.length > 1) {
+        pathSource.setData({
+          type: 'Feature',
+          geometry: { type: 'LineString', coordinates: pathRef.current },
+          properties: {},
+        });
+      }
+    } catch (error) {
+      console.warn('Error updating path:', error);
+    }
+  };
+
+  // Helper function to handle map load
+  const handleMapLoad = (map: mapboxgl.Map, position: LocationPoint) => {
+    const lngLat: [number, number] = [position.longitude, position.latitude];
+    
+    if (markerRef.current) {
+      markerRef.current.setLngLat(lngLat);
+    }
+    
+    if (!hasCenteredRef.current) {
+      hasCenteredRef.current = true;
+      map.flyTo({ center: lngLat, zoom: 16, duration: 1500 });
+    }
+  };
+
   // Update marker position
   useEffect(() => {
     if (!map || !position) return;
 
     // Check if map is loaded and valid
-    if (!map.loaded || !map.loaded()) {
-      // If map isn't loaded yet, wait for it and then center
-      const onMapLoad = () => {
-        if (position) {
-          const lngLat: [number, number] = [position.longitude, position.latitude];
-          
-          // Update marker if it exists
-          if (markerRef.current) {
-            markerRef.current.setLngLat(lngLat);
-          }
-          
-          // Center map on first location
-          if (!hasCenteredRef.current) {
-            hasCenteredRef.current = true;
-            map.flyTo({
-              center: lngLat,
-              zoom: 16,
-              duration: 1500,
-            });
-          }
-        }
-      };
-      map.once('load', onMapLoad);
+    if (!map.loaded?.()) {
+      map.once('load', () => handleMapLoad(map, position));
       return;
     }
 
     const { longitude, latitude, accuracy, heading } = position;
     const lngLat: [number, number] = [longitude, latitude];
 
-    // Ensure marker exists and is on the map
+    // Create marker if it doesn't exist
     if (!markerRef.current) {
-      // Create marker if it doesn't exist yet
-      const el = document.createElement('div');
-      el.className = 'user-location-marker';
-      
-      // Outer pulsing circle
-      const outerCircle = document.createElement('div');
-      outerCircle.style.width = '40px';
-      outerCircle.style.height = '40px';
-      outerCircle.style.borderRadius = '50%';
-      outerCircle.style.backgroundColor = '#4285f4';
-      outerCircle.style.opacity = '0.3';
-      outerCircle.style.position = 'absolute';
-      outerCircle.style.top = '50%';
-      outerCircle.style.left = '50%';
-      outerCircle.style.transform = 'translate(-50%, -50%)';
-      outerCircle.style.animation = 'pulse 2s cubic-bezier(0.4, 0, 0.2, 1) infinite';
-      
-      // Middle circle
-      const middleCircle = document.createElement('div');
-      middleCircle.style.width = '20px';
-      middleCircle.style.height = '20px';
-      middleCircle.style.borderRadius = '50%';
-      middleCircle.style.backgroundColor = '#4285f4';
-      middleCircle.style.opacity = '0.5';
-      middleCircle.style.position = 'absolute';
-      middleCircle.style.top = '50%';
-      middleCircle.style.left = '50%';
-      middleCircle.style.transform = 'translate(-50%, -50%)';
-      
-      // Inner dot
-      const innerDot = document.createElement('div');
-      innerDot.style.width = '12px';
-      innerDot.style.height = '12px';
-      innerDot.style.borderRadius = '50%';
-      innerDot.style.backgroundColor = '#ffffff';
-      innerDot.style.border = '2px solid #4285f4';
-      innerDot.style.position = 'absolute';
-      innerDot.style.top = '50%';
-      innerDot.style.left = '50%';
-      innerDot.style.transform = 'translate(-50%, -50%)';
-      innerDot.style.boxShadow = '0 2px 4px rgba(0,0,0,0.3)';
-      innerDot.style.zIndex = '3';
-      
-      // Direction arrow
-      const arrow = document.createElement('div');
-      arrow.className = 'heading-arrow';
-      arrow.style.width = '0';
-      arrow.style.height = '0';
-      arrow.style.borderLeft = '6px solid transparent';
-      arrow.style.borderRight = '6px solid transparent';
-      arrow.style.borderBottom = '16px solid #4285f4';
-      arrow.style.position = 'absolute';
-      arrow.style.top = '50%';
-      arrow.style.left = '50%';
-      arrow.style.transform = 'translate(-50%, -50%) translateY(-18px)';
-      arrow.style.transformOrigin = 'center bottom';
-      arrow.style.opacity = '0';
-      arrow.style.transition = 'opacity 0.3s ease, transform 0.3s ease-out';
-      arrow.style.zIndex = '2';
-      arrowRef.current = arrow;
-      
-      el.style.width = '40px';
-      el.style.height = '40px';
-      el.style.position = 'relative';
-      el.style.cursor = 'pointer';
-      el.style.zIndex = '1000';
-      
-      el.appendChild(outerCircle);
-      el.appendChild(middleCircle);
-      el.appendChild(arrow);
-      el.appendChild(innerDot);
-
+      const el = createMarkerElement();
       markerRef.current = new mapboxgl.Marker({
         element: el,
         anchor: 'center',
       }).setLngLat(lngLat).addTo(map);
     }
 
-    // Auto-center on first location acquisition (always, regardless of followUser)
+    // Auto-center on first location acquisition
     if (!hasCenteredRef.current) {
       hasCenteredRef.current = true;
-      map.flyTo({
-        center: lngLat,
-        zoom: 16, // Good zoom level for location tracking
-        duration: 1500,
-      });
+      map.flyTo({ center: lngLat, zoom: 16, duration: 1500 });
     }
 
     try {
       markerRef.current.setLngLat(lngLat);
-      
-      // Update arrow rotation if heading is available
-      if (arrowRef.current && heading !== null && heading !== undefined) {
-        // Convert heading (0-360 degrees, where 0 is north) to CSS rotation
-        // CSS rotation: 0deg = pointing up (north), clockwise is positive
-        arrowRef.current.style.transform = `translate(-50%, -50%) translateY(-18px) rotate(${heading}deg)`;
-        arrowRef.current.style.opacity = '1';
-      } else if (arrowRef.current) {
-        // Hide arrow if no heading
-        arrowRef.current.style.opacity = '0';
-      }
-
-      // Update accuracy circle
-      if (showAccuracyCircle && accuracy) {
-        try {
-          const source = map.getSource(sourceId) as mapboxgl.GeoJSONSource;
-          if (source) {
-            source.setData({
-              type: 'Feature',
-              geometry: {
-                type: 'Point',
-                coordinates: lngLat,
-              },
-              properties: {},
-            });
-
-            // Update circle radius in meters
-            // Mapbox circle-radius is in pixels, so we need to convert
-            // For better accuracy, we'll use a data-driven expression
-            const metersPerPixel = (40075017 * Math.cos((latitude * Math.PI) / 180)) / (256 * Math.pow(2, map.getZoom()));
-            const radiusInPixels = accuracy / metersPerPixel;
-
-            if (map.getLayer && map.getLayer(layerId)) {
-              map.setPaintProperty(layerId, 'circle-radius', radiusInPixels);
-            }
-          }
-        } catch (error) {
-          // Source or layer might not exist yet
-          console.warn('Error updating accuracy circle:', error);
-        }
-      }
-
-      // Update movement path
-      if (showPath) {
-        try {
-          // Add current position to path (keep last 100 points for performance)
-          pathRef.current.push(lngLat);
-          if (pathRef.current.length > 100) {
-            pathRef.current.shift();
-          }
-
-          // Update path line if source exists
-          if (map.getSource(pathSourceId)) {
-            const pathSource = map.getSource(pathSourceId) as mapboxgl.GeoJSONSource;
-            if (pathSource && pathRef.current.length > 1) {
-              pathSource.setData({
-                type: 'Feature',
-                geometry: {
-                  type: 'LineString',
-                  coordinates: pathRef.current,
-                },
-                properties: {},
-              });
-            }
-          }
-        } catch (error) {
-          console.warn('Error updating path:', error);
-        }
-      }
+      updateArrowHeading(heading);
+      updateAccuracyCircle(map, lngLat, accuracy || 0, latitude);
+      updateMovementPath(map, lngLat);
 
       // Follow user if enabled - use smooth easing for real-time tracking
       if (followUser && isTracking && hasCenteredRef.current) {
