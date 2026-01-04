@@ -71,7 +71,6 @@ export default function ActiveNavigationView({
   } = useNavigationContext();
   
   const lastProcessedLocationRef = useRef<LocationPoint | null>(null);
-  const routeLayerRef = useRef<string | null>(null);
   const rerouteTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isReroutingRef = useRef(false);
 
@@ -134,22 +133,17 @@ export default function ActiveNavigationView({
 
   // Trigger rerouting after being off-route for 3 seconds
   useEffect(() => {
+    // Clear any existing timeout first
+    if (rerouteTimeoutRef.current) {
+      clearTimeout(rerouteTimeoutRef.current);
+      rerouteTimeoutRef.current = null;
+    }
+    
+    // Start rerouting timer if off-route
     if (isOffRoute && !isRerouting && currentLocation) {
-      // Clear any existing timeout
-      if (rerouteTimeoutRef.current) {
-        clearTimeout(rerouteTimeoutRef.current);
-      }
-      
-      // Start rerouting after 3 seconds of being off-route
       rerouteTimeoutRef.current = setTimeout(() => {
         handleReroute([currentLocation.longitude, currentLocation.latitude]);
       }, 3000);
-    } else {
-      // Clear timeout if back on route
-      if (rerouteTimeoutRef.current) {
-        clearTimeout(rerouteTimeoutRef.current);
-        rerouteTimeoutRef.current = null;
-      }
     }
     
     return () => {
@@ -158,6 +152,147 @@ export default function ActiveNavigationView({
       }
     };
   }, [isOffRoute, isRerouting, currentLocation, handleReroute]);
+
+  // Add 3D buildings and sky layer for navigation
+  useEffect(() => {
+    if (!map) return;
+    // Only add 3D buildings when in active navigation mode
+    if (navigationState.mode !== 'active') return;
+    
+    const buildingsLayerId = 'add-3d-buildings';
+    const skyLayerId = 'navigation-sky';
+    let isAdded = false;
+    let retryTimeout: NodeJS.Timeout | null = null;
+    
+    const add3DLayers = () => {
+      if (isAdded) return;
+      
+      const style = map.getStyle();
+      if (!style) {
+        retryTimeout = setTimeout(add3DLayers, 100);
+        return;
+      }
+      
+      try {
+        const layers = style.layers;
+        if (!layers || layers.length === 0) {
+          retryTimeout = setTimeout(add3DLayers, 100);
+          return;
+        }
+        
+        // Hide existing flat building layers first
+        for (const layer of layers) {
+          if (layer.type === 'fill' && layer.id.includes('building')) {
+            try {
+              map.setLayoutProperty(layer.id, 'visibility', 'none');
+            } catch {
+              // Ignore
+            }
+          }
+        }
+        
+        // Find the first symbol layer to insert 3D buildings below labels
+        const labelLayer = layers.find(
+          (layer) => layer.type === 'symbol' && (layer.layout as Record<string, unknown>)?.['text-field']
+        );
+        const labelLayerId = labelLayer?.id;
+
+        // Add 3D buildings layer if not exists
+        if (!map.getLayer(buildingsLayerId)) {
+          map.addLayer(
+            {
+              'id': buildingsLayerId,
+              'source': 'composite',
+              'source-layer': 'building',
+              'type': 'fill-extrusion',
+              'minzoom': 15,
+              'paint': {
+                'fill-extrusion-color': '#aaa',
+                'fill-extrusion-height': [
+                  'interpolate',
+                  ['linear'],
+                  ['zoom'],
+                  15,
+                  0,
+                  15.05,
+                  ['coalesce', ['get', 'height'], 10]
+                ],
+                'fill-extrusion-base': [
+                  'interpolate',
+                  ['linear'],
+                  ['zoom'],
+                  15,
+                  0,
+                  15.05,
+                  ['coalesce', ['get', 'min_height'], 0]
+                ],
+                'fill-extrusion-opacity': 0.6
+              }
+            },
+            labelLayerId
+          );
+          isAdded = true;
+        }
+        
+        // Add sky layer for atmosphere effect
+        if (!map.getLayer(skyLayerId)) {
+          map.addLayer({
+            id: skyLayerId,
+            type: 'sky',
+            paint: {
+              'sky-type': 'atmosphere',
+              'sky-atmosphere-sun': [0, 90],
+              'sky-atmosphere-sun-intensity': 15,
+            },
+          });
+        }
+      } catch (error) {
+        console.error('Error adding 3D buildings:', error);
+      }
+    };
+    
+    // Try immediately since style should be loaded
+    add3DLayers();
+    
+    // Also listen for style.load event in case style reloads
+    map.on('style.load', add3DLayers);
+    
+    // Try on idle as fallback
+    const idleHandler = () => add3DLayers();
+    map.once('idle', idleHandler);
+    
+    return () => {
+      if (retryTimeout) clearTimeout(retryTimeout);
+      map.off('style.load', add3DLayers);
+      map.off('idle', idleHandler);
+      
+      try {
+        // Remove 3D layers
+        if (map.getLayer(buildingsLayerId)) {
+          map.removeLayer(buildingsLayerId);
+        }
+        if (map.getLayer(skyLayerId)) {
+          map.removeLayer(skyLayerId);
+        }
+        
+        // Restore hidden flat building layers
+        const style = map.getStyle();
+        if (style?.layers) {
+          for (const layer of style.layers) {
+            if (layer.type === 'fill' && layer.id.includes('building')) {
+              try {
+                map.setLayoutProperty(layer.id, 'visibility', 'visible');
+              } catch {
+                // Ignore
+              }
+            }
+          }
+        }
+      } catch {
+        // Map might be removed
+      }
+    };
+  }, [map, navigationState.mode]);
 
   // Draw route on map
   useEffect(() => {
@@ -183,7 +318,7 @@ export default function ActiveNavigationView({
       type: 'geojson',
       data: {
         type: 'Feature',
-        geometry: route.geometry,
+        geometry: route.geometry as GeoJSON.Geometry,
         properties: {},
       },
     });
@@ -204,8 +339,6 @@ export default function ActiveNavigationView({
       },
     });
 
-    routeLayerRef.current = layerId;
-
     return () => {
       if (map.getLayer(layerId)) {
         map.removeLayer(layerId);
@@ -221,7 +354,7 @@ export default function ActiveNavigationView({
 
   // Process location updates for navigation progress
   const processLocationUpdate = useCallback((location: LocationPoint) => {
-    if (!route || !route.steps || route.steps.length === 0) return;
+    if (!route?.steps || route.steps.length === 0) return;
 
     const currentPoint: [number, number] = [location.longitude, location.latitude];
     
@@ -279,9 +412,9 @@ export default function ActiveNavigationView({
     }
 
     // Update navigation progress
-    const newDistanceToManeuver = newStepIndex !== currentStepIndex
-      ? route.steps[newStepIndex]?.distance || 0
-      : distanceToManeuver;
+    const newDistanceToManeuver = newStepIndex === currentStepIndex
+      ? distanceToManeuver
+      : route.steps[newStepIndex]?.distance || 0;
       
     updateNavigationProgress(currentPoint, newDistanceToManeuver, newStepIndex);
   }, [map, route, currentStepIndex, destination, isOffRoute, endNavigation, setOffRoute, updateNavigationProgress]);

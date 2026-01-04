@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import MapboxDirectionsControl from '@/components/Map/MapboxDirectionsControl';
-import StepInstructions from '@/components/Navigation/StepInstructions';
 import { formatDistance, formatDuration } from '@/lib/location';
 import { logRouteRequest } from '@/lib/analytics';
 import { NavigationStep, NavigationRoute } from '@/types';
@@ -163,20 +162,9 @@ export default function SelectedLocationPanel({
       markerRef.current.remove();
     }
 
-    // Create marker
-    const el = document.createElement('div');
-    el.className = 'selected-location-marker';
-    el.style.width = '32px';
-    el.style.height = '32px';
-    el.style.borderRadius = '50%';
-    el.style.backgroundColor = '#3b82f6';
-    el.style.border = '3px solid white';
-    el.style.boxShadow = '0 2px 8px rgba(0,0,0,0.3)';
-    el.style.cursor = 'pointer';
-
+    // Use Mapbox's default marker with red color
     markerRef.current = new mapboxgl.Marker({
-      element: el,
-      anchor: 'center',
+      color: '#EA4335', // Red color like Google Maps
     })
       .setLngLat(coordinates)
       .addTo(map);
@@ -188,6 +176,108 @@ export default function SelectedLocationPanel({
       }
     };
   }, [map, coordinates]);
+
+  // Draw route line on map when routeInfo is available
+  useEffect(() => {
+    if (!map || !routeInfo?.geometry?.coordinates) return;
+
+    const sourceId = 'selected-route-source';
+    const layerId = 'selected-route-layer';
+    const outlineLayerId = 'selected-route-outline';
+
+    // Wait for map style to be loaded
+    const addRoute = () => {
+      // Remove existing route layers/sources if any
+      if (map.getLayer(layerId)) {
+        map.removeLayer(layerId);
+      }
+      if (map.getLayer(outlineLayerId)) {
+        map.removeLayer(outlineLayerId);
+      }
+      if (map.getSource(sourceId)) {
+        map.removeSource(sourceId);
+      }
+
+      // Add route source
+      map.addSource(sourceId, {
+        type: 'geojson',
+        data: {
+          type: 'Feature',
+          properties: {},
+          geometry: {
+            type: 'LineString' as const,
+            coordinates: routeInfo.geometry.coordinates,
+          },
+        },
+      });
+
+      // Add route outline (for better visibility)
+      map.addLayer({
+        id: outlineLayerId,
+        type: 'line',
+        source: sourceId,
+        layout: {
+          'line-join': 'round',
+          'line-cap': 'round',
+        },
+        paint: {
+          'line-color': '#1a73e8',
+          'line-width': 8,
+          'line-opacity': 0.4,
+        },
+      });
+
+      // Add route line
+      map.addLayer({
+        id: layerId,
+        type: 'line',
+        source: sourceId,
+        layout: {
+          'line-join': 'round',
+          'line-cap': 'round',
+        },
+        paint: {
+          'line-color': '#4285f4',
+          'line-width': 5,
+          'line-opacity': 1,
+        },
+      });
+
+      // Fit map to show the entire route
+      if (routeInfo.geometry.coordinates.length > 0) {
+        const bounds = routeInfo.geometry.coordinates.reduce(
+          (bounds, coord) => bounds.extend(coord),
+          new mapboxgl.LngLatBounds(
+            routeInfo.geometry.coordinates[0],
+            routeInfo.geometry.coordinates[0]
+          )
+        );
+
+        map.fitBounds(bounds, {
+          padding: { top: 100, bottom: 150, left: 50, right: 50 },
+          duration: 500,
+        });
+      }
+    };
+
+    if (map.isStyleLoaded()) {
+      addRoute();
+    } else {
+      map.once('styledata', addRoute);
+    }
+
+    return () => {
+      if (map.getLayer(layerId)) {
+        map.removeLayer(layerId);
+      }
+      if (map.getLayer(outlineLayerId)) {
+        map.removeLayer(outlineLayerId);
+      }
+      if (map.getSource(sourceId)) {
+        map.removeSource(sourceId);
+      }
+    };
+  }, [map, routeInfo]);
 
   // Debug: Log state changes
   useEffect(() => {
@@ -276,6 +366,17 @@ export default function SelectedLocationPanel({
       
       const destination = { coordinates, name: name || 'Destination' };
       
+      // Switch to 3D navigation view
+      if (map) {
+        map.easeTo({
+          center: staticOrigin,
+          zoom: 17,
+          pitch: 60, // Tilted 3D view
+          bearing: 0, // Will be updated by ActiveNavigationView based on heading
+          duration: 800,
+        });
+      }
+      
       // Start active navigation with route data directly (avoids race condition)
       startActiveNavigation({
         route: navigationRoute,
@@ -311,95 +412,58 @@ export default function SelectedLocationPanel({
         />
       )}
 
-      <div className="fixed bottom-0 left-0 right-0 z-40 flex flex-col bg-white" style={{ height: '45%' }}>
-        {/* Selected Location Information - Top Section */}
-        <div className="border border-gray-300 bg-white px-4 py-3 flex-shrink-0">
-          <div className="text-center">
-            <p className="text-sm font-medium text-gray-900 mb-1">Selected Location Information</p>
-            <h3 className="text-lg font-bold text-gray-900 mb-1">{name || 'Selected Location'}</h3>
-            <p className="text-xs text-gray-600 mb-2">
-              {coordinates[1].toFixed(6)}, {coordinates[0].toFixed(6)}
-            </p>
-            
-            {/* Route Information */}
-            {isCalculating && !routeInfo && !staticOrigin && (
-              <div className="flex items-center justify-center gap-2 text-sm text-gray-600">
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
-                <span>Getting your location...</span>
-              </div>
-            )}
-            
-            {isCalculating && !routeInfo && staticOrigin && (
-              <div className="flex items-center justify-center gap-2 text-sm text-gray-600">
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
-                <span>Calculating route...</span>
-              </div>
-            )}
-            
-            {routeInfo && (
-              <div className="flex items-center justify-center gap-4">
-                <div className="flex items-center gap-2 text-gray-700">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-600">
-                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
-                    <circle cx="12" cy="10" r="3"></circle>
-                  </svg>
-                  <span className="text-sm font-semibold text-gray-900">{formatDistance(routeInfo.distance)}</span>
+      {/* Minimal bottom bar - just shows route info and actions */}
+      <div className="fixed bottom-0 left-0 right-0 z-40 bg-white shadow-lg border-t border-gray-200">
+        <div className="px-4 py-3">
+          {/* Destination name and route info */}
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex-1 min-w-0">
+              <h3 className="text-base font-semibold text-gray-900 truncate">{name || 'Selected Location'}</h3>
+              {routeInfo && (
+                <div className="flex items-center gap-3 mt-1">
+                  <span className="text-sm text-gray-600">{formatDistance(routeInfo.distance)}</span>
+                  <span className="text-gray-400">•</span>
+                  <span className="text-sm text-gray-600">{formatDuration(routeInfo.duration)}</span>
                 </div>
-                <div className="flex items-center gap-2 text-gray-700">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-600">
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <polyline points="12 6 12 12 16 14"></polyline>
-                  </svg>
-                  <span className="text-sm font-semibold text-gray-900">{formatDuration(routeInfo.duration)}</span>
+              )}
+              {isCalculating && !routeInfo && (
+                <div className="flex items-center gap-2 mt-1">
+                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-500"></div>
+                  <span className="text-sm text-gray-500">
+                    {staticOrigin ? 'Calculating route...' : 'Getting location...'}
+                  </span>
                 </div>
-              </div>
-            )}
-            
-            {error && !isCalculating && (
-              <div className="mt-2">
-                <p className="text-xs text-red-600 mb-2">{error}</p>
-                <button
-                  onClick={handleRetry}
-                  className="px-4 py-1.5 bg-blue-500 text-white text-xs rounded-md hover:bg-blue-600 transition"
-                >
-                  Retry
-                </button>
-              </div>
-            )}
+              )}
+              {error && !isCalculating && (
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-sm text-red-600">{error}</span>
+                  <button
+                    onClick={handleRetry}
+                    className="text-sm text-blue-600 font-medium hover:underline"
+                  >
+                    Retry
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
 
-        {/* Step-by-step directions - Middle Section (scrollable, fills available space) */}
-        {routeInfo && routeInfo.steps.length > 0 && (
-          <div className="flex-1 overflow-hidden min-h-0 flex flex-col px-4 py-2">
-            <StepInstructions
-              steps={routeInfo.steps}
-              collapsible={false}
-              fillContainer={true}
-            />
+          {/* Action buttons */}
+          <div className="flex gap-3">
+            <button
+              onClick={handleStart}
+              disabled={!routeInfo || isCalculating}
+              className="flex-1 bg-blue-600 text-white px-4 py-2.5 rounded-lg font-medium hover:bg-blue-700 transition text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Start
+            </button>
+            <button
+              onClick={handleExit}
+              className="px-4 py-2.5 rounded-lg font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 transition text-sm"
+            >
+              Exit
+            </button>
           </div>
-        )}
-
-        {/* Spacer when no steps available */}
-        {(!routeInfo || routeInfo.steps.length === 0) && (
-          <div className="flex-1" />
-        )}
-
-        {/* Start and Exit Buttons - Bottom Section */}
-        <div className="bg-white px-4 py-3 flex gap-3 border-t border-gray-300 flex-shrink-0">
-          <button
-            onClick={handleStart}
-            disabled={!routeInfo || isCalculating}
-            className="flex-1 border border-gray-400 bg-white text-gray-900 px-4 py-3 rounded-none font-medium hover:bg-gray-50 transition text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Start
-          </button>
-          <button
-            onClick={handleExit}
-            className="flex-1 border border-gray-400 bg-white text-gray-900 px-4 py-3 rounded-none font-medium hover:bg-gray-50 transition text-sm"
-          >
-            Exit
-          </button>
         </div>
       </div>
     </>

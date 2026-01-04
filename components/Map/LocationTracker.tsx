@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { LocationPoint } from '@/types';
 import { useGeolocation } from '@/hooks/useGeolocation';
@@ -12,6 +12,7 @@ interface LocationTrackerProps {
   readonly showAccuracyCircle?: boolean;
   readonly showPath?: boolean; // Show movement trail
   readonly navigationMode?: boolean; // Show arrow marker for navigation
+  readonly minimalMarker?: boolean; // Show only small dot marker (no pulsing circles)
 }
 
 export default function LocationTracker({
@@ -21,6 +22,7 @@ export default function LocationTracker({
   showAccuracyCircle = true,
   showPath = true,
   navigationMode = false,
+  minimalMarker = false,
 }: LocationTrackerProps) {
   const markerRef = useRef<mapboxgl.Marker | null>(null);
   const arrowRef = useRef<HTMLDivElement | null>(null);
@@ -409,7 +411,84 @@ export default function LocationTracker({
     hasCenteredRef.current = false;
   }, [map]);
 
-  // Update marker appearance when navigation mode changes
+  // Helper to apply navigation mode styles
+  const applyNavigationModeStyles = useCallback((
+    outer: HTMLDivElement | null,
+    middle: HTMLDivElement | null,
+    dot: HTMLDivElement | null,
+    arrow: HTMLDivElement | null,
+    heading: number
+  ) => {
+    if (outer) outer.style.opacity = '0';
+    if (middle) middle.style.opacity = '0';
+    if (dot) dot.style.opacity = '0';
+    if (arrow) {
+      arrow.style.borderLeft = '14px solid transparent';
+      arrow.style.borderRight = '14px solid transparent';
+      arrow.style.borderBottom = '35px solid #4285f4';
+      arrow.style.transform = `translate(-50%, -50%) rotate(${heading}deg)`;
+      arrow.style.transformOrigin = 'center center';
+      arrow.style.opacity = '1';
+      arrow.style.filter = 'drop-shadow(0 2px 4px rgba(0,0,0,0.4))';
+    }
+  }, []);
+
+  // Helper to apply minimal marker styles (user location when destination is selected)
+  const applyMinimalMarkerStyles = useCallback((
+    outer: HTMLDivElement | null,
+    middle: HTMLDivElement | null,
+    dot: HTMLDivElement | null,
+    arrow: HTMLDivElement | null
+  ) => {
+    if (outer) outer.style.opacity = '0';
+    if (middle) {
+      // Show a subtle blue ring around the dot
+      middle.style.opacity = '0.4';
+      middle.style.width = '24px';
+      middle.style.height = '24px';
+    }
+    if (dot) {
+      // Make dot larger and more visible
+      dot.style.width = '14px';
+      dot.style.height = '14px';
+      dot.style.opacity = '1';
+      dot.style.boxShadow = '0 2px 6px rgba(0,0,0,0.4)';
+    }
+    if (arrow) arrow.style.opacity = '0';
+  }, []);
+
+  // Helper to apply normal marker styles
+  const applyNormalMarkerStyles = useCallback((
+    outer: HTMLDivElement | null,
+    middle: HTMLDivElement | null,
+    dot: HTMLDivElement | null,
+    arrow: HTMLDivElement | null,
+    heading: number | null | undefined
+  ) => {
+    if (outer) outer.style.opacity = '0.3';
+    if (middle) {
+      middle.style.opacity = '0.5';
+      middle.style.width = '20px';
+      middle.style.height = '20px';
+    }
+    if (dot) {
+      dot.style.width = '12px';
+      dot.style.height = '12px';
+      dot.style.opacity = '1';
+      dot.style.boxShadow = '0 2px 4px rgba(0,0,0,0.3)';
+    }
+    if (arrow) {
+      arrow.style.borderLeft = '6px solid transparent';
+      arrow.style.borderRight = '6px solid transparent';
+      arrow.style.borderBottom = '16px solid #4285f4';
+      arrow.style.transform = `translate(-50%, -50%) translateY(-18px) rotate(${heading || 0}deg)`;
+      arrow.style.transformOrigin = 'center bottom';
+      arrow.style.filter = 'none';
+      arrow.style.opacity = heading == null ? '0' : '1';
+    }
+  }, []);
+
+  // Update marker appearance when navigation mode or minimalMarker changes
   useEffect(() => {
     if (!markerContainerRef.current) return;
     
@@ -420,54 +499,15 @@ export default function LocationTracker({
     const arrow = container.querySelector<HTMLDivElement>('[data-marker-part="arrow"]');
     
     if (navigationMode) {
-      // Navigation mode: Show large arrow, hide regular marker
-      if (outer) {
-        outer.style.opacity = '0';
-      }
-      if (middle) {
-        middle.style.opacity = '0';
-      }
-      if (dot) {
-        dot.style.opacity = '0';
-      }
-      if (arrow) {
-        // Make the arrow larger and more prominent for navigation
-        arrow.style.width = '0';
-        arrow.style.height = '0';
-        arrow.style.borderLeft = '14px solid transparent';
-        arrow.style.borderRight = '14px solid transparent';
-        arrow.style.borderBottom = '35px solid #4285f4';
-        arrow.style.transform = `translate(-50%, -50%) rotate(${position?.heading || 0}deg)`;
-        arrow.style.transformOrigin = 'center center';
-        arrow.style.opacity = '1';
-        arrow.style.filter = 'drop-shadow(0 2px 4px rgba(0,0,0,0.4))';
-      }
+      applyNavigationModeStyles(outer, middle, dot, arrow, position?.heading || 0);
+    } else if (minimalMarker) {
+      applyMinimalMarkerStyles(outer, middle, dot, arrow);
     } else {
-      // Normal mode: Show regular marker
-      if (outer) {
-        outer.style.opacity = '0.3';
-      }
-      if (middle) {
-        middle.style.opacity = '0.5';
-      }
-      if (dot) {
-        dot.style.opacity = '1';
-      }
-      if (arrow) {
-        // Smaller arrow that only shows with heading
-        arrow.style.borderLeft = '6px solid transparent';
-        arrow.style.borderRight = '6px solid transparent';
-        arrow.style.borderBottom = '16px solid #4285f4';
-        arrow.style.transform = `translate(-50%, -50%) translateY(-18px) rotate(${position?.heading || 0}deg)`;
-        arrow.style.transformOrigin = 'center bottom';
-        arrow.style.filter = 'none';
-        // Only show arrow if heading is available
-        arrow.style.opacity = position?.heading != null ? '1' : '0';
-      }
+      applyNormalMarkerStyles(outer, middle, dot, arrow, position?.heading);
     }
     
     lastNavigationModeRef.current = navigationMode;
-  }, [navigationMode, position?.heading]);
+  }, [navigationMode, minimalMarker, position?.heading, applyNavigationModeStyles, applyMinimalMarkerStyles, applyNormalMarkerStyles]);
 
   // Auto-start tracking - don't wait for map
   useEffect(() => {

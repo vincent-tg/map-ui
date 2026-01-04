@@ -252,7 +252,7 @@ export default function Home() {
   // Determine map height based on current state
   const getMapHeight = () => {
     if (isActiveNavigation) return '100%'; // Full screen during navigation
-    if (selectedLocation) return '55%';
+    if (selectedLocation) return 'calc(100% - 120px)'; // Almost full screen with minimal bottom bar
     return '66.67%';
   };
 
@@ -274,8 +274,10 @@ export default function Home() {
                 map={map}
                 onLocationUpdate={handleLocationUpdate}
                 followUser={!selectedTrip && !selectedLocation && !isActiveNavigation}
-                showPath={!isActiveNavigation}
+                showAccuracyCircle={!selectedLocation && !isActiveNavigation}
+                showPath={!isActiveNavigation && !selectedLocation}
                 navigationMode={isActiveNavigation}
+                minimalMarker={!!selectedLocation && !isActiveNavigation}
               />
               {/* Hide NavigationControls during active navigation - ActiveNavigationView handles it */}
               {!isActiveNavigation && (
