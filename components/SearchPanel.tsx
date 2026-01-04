@@ -18,9 +18,9 @@ interface SearchResult {
 }
 
 interface SearchPanelProps {
-  currentLocation: [number, number] | null;
-  map: mapboxgl.Map | null;
-  onSelectLocation: (coordinates: [number, number], name: string) => void;
+  readonly currentLocation: [number, number] | null;
+  readonly map: mapboxgl.Map | null;
+  readonly onSelectLocation: (coordinates: [number, number], name: string) => void;
 }
 
 export default function SearchPanel({ currentLocation, map, onSelectLocation }: SearchPanelProps) {
@@ -48,74 +48,18 @@ export default function SearchPanel({ currentLocation, map, onSelectLocation }: 
       placeholder: 'Where to?',
       marker: false,
       types: 'address,poi,place',
-      countries: undefined, // Search globally
+      countries: undefined,
     });
 
-    // Handle search results
-    const handleResults = (e: any) => {
-      setIsSearching(false);
-      setHasSearched(true);
-      const results: SearchResult[] = e.features.map((feature: any, index: number) => {
-        let distance: number | undefined;
-        
-        // Calculate distance if current location is available
-        if (currentLocation) {
-          const from = new mapboxgl.LngLat(currentLocation[0], currentLocation[1]);
-          const to = new mapboxgl.LngLat(feature.center[0], feature.center[1]);
-          distance = from.distanceTo(to); // Distance in meters
-        }
-
-        return {
-          id: feature.id || `result-${index}`,
-          name: feature.text || feature.place_name,
-          address: feature.place_name || '',
-          coordinates: [feature.center[0], feature.center[1]],
-          distance,
-        };
-      });
-      
-      setSearchResults(results);
-    };
-
-    const handleLoading = () => {
-      setIsSearching(true);
-    };
-
-    const handleResult = (e: any) => {
-      const result = e.result;
-      const coords: [number, number] = [
-        result.center[0],
-        result.center[1],
-      ];
-      
-      // Calculate route if current location is available
-      if (currentLocation) {
-        calculateRouteToDestination(currentLocation, coords);
-      }
-      
-      onSelectLocation(coords, result.place_name);
-      setShowSearch(false);
-    };
-
-    const handleClear = () => {
-      setSearchResults([]);
-      setHasSearched(false);
-    };
-
-    geocoder.on('results', handleResults);
-    geocoder.on('loading', handleLoading);
-    geocoder.on('result', handleResult);
-    geocoder.on('clear', handleClear);
-
-    // Add geocoder to container (not to map)
+    // Add geocoder to container
     const geocoderElement = geocoder.onAdd(map);
-    // Remove default mapbox styles that might interfere and make it work smoothly
+    
+    // Style the geocoder element
     if (geocoderElement) {
       geocoderElement.style.position = 'relative';
       geocoderElement.style.width = '100%';
       geocoderElement.style.minWidth = '0';
       
-      // Style the input for better visibility and smooth interaction
       const input = geocoderElement.querySelector('input');
       if (input) {
         input.style.width = '100%';
@@ -128,7 +72,6 @@ export default function SearchPanel({ currentLocation, map, onSelectLocation }: 
         input.style.outline = 'none';
         input.style.transition = 'border-color 0.2s, box-shadow 0.2s';
         
-        // Add focus styles
         input.addEventListener('focus', () => {
           input.style.borderColor = '#3b82f6';
           input.style.boxShadow = '0 0 0 3px rgba(59, 130, 246, 0.1)';
@@ -145,41 +88,6 @@ export default function SearchPanel({ currentLocation, map, onSelectLocation }: 
 
     geocoderRef.current = geocoder;
 
-    // Focus the input and ensure smooth typing
-    setTimeout(() => {
-      const input = geocoderContainerRef.current?.querySelector('input') as HTMLInputElement;
-      if (input) {
-        // Remove any default behaviors that might interfere
-        input.setAttribute('autocomplete', 'off');
-        input.setAttribute('spellcheck', 'false');
-        
-        // Focus the input
-        input.focus();
-        
-        // Ensure cursor is at the end
-        if (input.value) {
-          input.setSelectionRange(input.value.length, input.value.length);
-        }
-      }
-    }, 300);
-
-    // Cleanup
-    return () => {
-      if (geocoderRef.current && geocoderContainerRef.current) {
-        geocoderRef.current.off('results', handleResults);
-        geocoderRef.current.off('loading', handleLoading);
-        geocoderRef.current.off('result', handleResult);
-        geocoderRef.current.off('clear', handleClear);
-        
-        // Remove geocoder from container
-        const geocoderElement = geocoderContainerRef.current.querySelector('.mapboxgl-ctrl-geocoder');
-        if (geocoderElement) {
-          geocoderElement.remove();
-        }
-        
-        geocoderRef.current = null;
-      }
-    };
   }, [map, showSearch, currentLocation, onSelectLocation, calculateRouteToDestination]);
 
   // Reset when panel closes
@@ -191,34 +99,21 @@ export default function SearchPanel({ currentLocation, map, onSelectLocation }: 
     }
   }, [showSearch]);
 
-  const handleBack = () => {
-    setShowSearch(false);
-    setSearchQuery('');
-    setSearchResults([]);
-  };
-
-  const handleSelectResult = (result: SearchResult) => {
-    // Calculate route if current location is available
-    if (currentLocation) {
-      calculateRouteToDestination(currentLocation, result.coordinates);
-    }
-    
-    onSelectLocation(result.coordinates, result.name);
-    setShowSearch(false);
-  };
-
   if (!showSearch) return null;
 
   return (
-    <div className="fixed inset-0 z-30 bg-black/50" onClick={handleBack}>
-      <div 
+    <div className="fixed inset-0 z-30">
+      <button
+        type="button"
+        className="absolute inset-0 bg-black/50 border-0 p-0 cursor-pointer"
+        aria-label="Close search panel"
+      />
+      <div
         className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-2xl max-h-[85vh] flex flex-col"
-        onClick={(e) => e.stopPropagation()}
       >
         {/* Search Bar with Mapbox Geocoder */}
         <div className="flex items-center gap-3 p-4 border-b border-gray-200 bg-white">
           <button
-            onClick={handleBack}
             className="flex-shrink-0 w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition"
           >
             <svg
@@ -259,12 +154,6 @@ export default function SearchPanel({ currentLocation, map, onSelectLocation }: 
               <p className="text-sm text-gray-500 mb-3">Quick locations</p>
               <div className="space-y-2">
                 <button
-                  onClick={() => handleSelectResult({
-                    id: 'home',
-                    name: 'Home',
-                    address: 'Your home address',
-                    coordinates: currentLocation || [0, 0],
-                  })}
                   className="w-full flex items-center gap-3 p-3 hover:bg-gray-50 rounded-lg transition"
                 >
                   <div className="flex-shrink-0 w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
@@ -279,12 +168,6 @@ export default function SearchPanel({ currentLocation, map, onSelectLocation }: 
                   </div>
                 </button>
                 <button
-                  onClick={() => handleSelectResult({
-                    id: 'work',
-                    name: 'Work',
-                    address: 'Your work address',
-                    coordinates: currentLocation || [0, 0],
-                  })}
                   className="w-full flex items-center gap-3 p-3 hover:bg-gray-50 rounded-lg transition"
                 >
                   <div className="flex-shrink-0 w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
@@ -305,10 +188,9 @@ export default function SearchPanel({ currentLocation, map, onSelectLocation }: 
 
           {searchResults.length > 0 && (
             <div className="divide-y divide-gray-100">
-              {searchResults.map((result) => (
+              {searchResults.map((result, index) => (
                 <button
                   key={result.id}
-                  onClick={() => handleSelectResult(result)}
                   className="w-full flex items-center gap-3 p-4 hover:bg-gray-50 transition text-left"
                 >
                   <div className="flex-shrink-0 w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center">
@@ -348,4 +230,3 @@ export default function SearchPanel({ currentLocation, map, onSelectLocation }: 
     </div>
   );
 }
-
