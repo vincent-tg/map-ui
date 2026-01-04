@@ -77,6 +77,23 @@ export default function ActiveNavigationView({
 
   const { route, destination, currentStepIndex, isOffRoute, isRerouting, remainingDistance, remainingDuration, eta } = navigationState;
 
+  // Handle ending navigation - reset map to 2D and center on current location
+  const handleEndNavigation = useCallback(() => {
+    // Reset map to 2D view
+    if (map && currentLocation) {
+      map.easeTo({
+        center: [currentLocation.longitude, currentLocation.latitude],
+        zoom: 16,
+        bearing: 0,
+        pitch: 0,
+        duration: 500,
+      });
+    }
+    
+    // Call the context's endNavigation to reset state
+    endNavigation();
+  }, [map, currentLocation, endNavigation]);
+
   // Automatic rerouting when off-route
   const handleReroute = useCallback(async (currentPoint: [number, number]) => {
     if (!destination?.coordinates || isReroutingRef.current) return;
@@ -237,7 +254,16 @@ export default function ActiveNavigationView({
         destination.coordinates
       );
       if (distanceToDestination < ARRIVAL_THRESHOLD) {
-        // Arrived!
+        // Arrived! Reset map to 2D and end navigation
+        if (map) {
+          map.easeTo({
+            center: currentPoint,
+            zoom: 16,
+            bearing: 0,
+            pitch: 0,
+            duration: 500,
+          });
+        }
         endNavigation();
         return;
       }
@@ -258,7 +284,7 @@ export default function ActiveNavigationView({
       : distanceToManeuver;
       
     updateNavigationProgress(currentPoint, newDistanceToManeuver, newStepIndex);
-  }, [route, currentStepIndex, destination, isOffRoute, endNavigation, setOffRoute, updateNavigationProgress]);
+  }, [map, route, currentStepIndex, destination, isOffRoute, endNavigation, setOffRoute, updateNavigationProgress]);
 
   // Watch for location updates
   useEffect(() => {
@@ -362,7 +388,7 @@ export default function ActiveNavigationView({
               </p>
             </div>
             <button
-              onClick={endNavigation}
+              onClick={handleEndNavigation}
               className="flex-shrink-0 px-4 py-2 bg-red-500 text-white rounded-lg font-medium hover:bg-red-600 transition text-sm"
             >
               End

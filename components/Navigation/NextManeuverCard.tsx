@@ -174,7 +174,7 @@ export default function NextManeuverCard({
           <p className="text-3xl font-bold tracking-tight">
             {formatDistance(distanceToManeuver)}
           </p>
-          <p className="text-lg font-medium opacity-95 truncate mt-1">
+          <p className="text-lg font-medium opacity-95 mt-1 leading-tight">
             {step.instruction || 'Continue straight'}
           </p>
         </div>
@@ -182,15 +182,15 @@ export default function NextManeuverCard({
       
       {/* Next step preview (if available) */}
       {isNextStep && (
-        <div className="bg-black/20 px-4 py-2 flex items-center gap-3">
-          <span className="text-sm opacity-75">Then</span>
+        <div className="bg-black/20 px-4 py-2 flex items-start gap-3">
+          <span className="text-sm opacity-75 flex-shrink-0 pt-0.5">Then</span>
           <div className="flex-shrink-0 opacity-75">
             {getManeuverIcon(isNextStep.maneuver.type, isNextStep.maneuver.modifier)}
           </div>
-          <p className="text-sm opacity-90 truncate flex-1">
+          <p className="text-sm opacity-90 flex-1 leading-tight">
             {isNextStep.instruction || 'Continue'}
           </p>
-          <span className="text-sm font-medium opacity-75">
+          <span className="text-sm font-medium opacity-75 flex-shrink-0">
             {formatDistance(isNextStep.distance)}
           </span>
         </div>
