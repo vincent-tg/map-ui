@@ -22,7 +22,11 @@ interface NavigationContextType {
   
   // Navigation actions
   setPreviewRoute: (route: NavigationRoute, destination: SelectedLocation, origin: [number, number]) => void;
-  startActiveNavigation: () => void;
+  startActiveNavigation: (routeData?: {
+    route: NavigationRoute;
+    destination: SelectedLocation;
+    origin: [number, number];
+  }) => void;
   updateNavigationProgress: (
     currentLocation: [number, number],
     distanceToNextManeuver: number,
@@ -88,17 +92,46 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   }, [calculateETA]);
 
   // Start active turn-by-turn navigation
-  const startActiveNavigation = useCallback(() => {
-    if (navigationState.route) {
-      setNavigationState(prev => ({
-        ...prev,
-        mode: 'active',
-      }));
-      setIsNavigationActive(true);
-      // Clear selected location panel since we're now in active navigation
-      setSelectedLocation(null);
+  // Can optionally receive route data directly to avoid race conditions
+  const startActiveNavigation = useCallback((
+    routeData?: {
+      route: NavigationRoute;
+      destination: SelectedLocation;
+      origin: [number, number];
     }
-  }, [navigationState.route]);
+  ) => {
+    if (routeData) {
+      // Start navigation with provided route data (avoids race condition)
+      setNavigationState({
+        mode: 'active',
+        route: routeData.route,
+        destination: routeData.destination,
+        origin: routeData.origin,
+        currentStepIndex: 0,
+        distanceToNextManeuver: routeData.route.steps[0]?.distance || 0,
+        isOffRoute: false,
+        isRerouting: false,
+        eta: calculateETA(routeData.route.duration),
+        remainingDistance: routeData.route.distance,
+        remainingDuration: routeData.route.duration,
+      });
+    } else {
+      // Use existing route from state (functional update for latest state)
+      setNavigationState(prev => {
+        if (!prev.route) {
+          console.warn('Cannot start navigation: no route available');
+          return prev;
+        }
+        return {
+          ...prev,
+          mode: 'active',
+        };
+      });
+    }
+    setIsNavigationActive(true);
+    // Clear selected location panel since we're now in active navigation
+    setSelectedLocation(null);
+  }, [calculateETA]);
 
   // Update navigation progress based on GPS
   const updateNavigationProgress = useCallback((

@@ -275,6 +275,7 @@ export default function Home() {
                 onLocationUpdate={handleLocationUpdate}
                 followUser={!selectedTrip && !selectedLocation && !isActiveNavigation}
                 showPath={!isActiveNavigation}
+                navigationMode={isActiveNavigation}
               />
               {/* Hide NavigationControls during active navigation - ActiveNavigationView handles it */}
               {!isActiveNavigation && (

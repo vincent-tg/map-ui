@@ -69,7 +69,7 @@ export default function SelectedLocationPanel({
   onStart,
   onExit,
 }: SelectedLocationPanelProps) {
-  const { setPreviewRoute, startActiveNavigation } = useNavigationContext();
+  const { startActiveNavigation } = useNavigationContext();
   
   const markerRef = useRef<mapboxgl.Marker | null>(null);
   const [routeInfo, setRouteInfo] = useState<RouteInfo | null>(null);
@@ -274,15 +274,14 @@ export default function SelectedLocationPanel({
         steps: routeInfo.steps,
       };
       
-      // Store route in navigation context
-      setPreviewRoute(
-        navigationRoute,
-        { coordinates, name: name || 'Destination' },
-        staticOrigin
-      );
+      const destination = { coordinates, name: name || 'Destination' };
       
-      // Start active navigation
-      startActiveNavigation();
+      // Start active navigation with route data directly (avoids race condition)
+      startActiveNavigation({
+        route: navigationRoute,
+        destination,
+        origin: staticOrigin,
+      });
       
       // Call parent's onStart callback
       onStart();
@@ -370,13 +369,13 @@ export default function SelectedLocationPanel({
           </div>
         </div>
 
-        {/* Step-by-step directions - Middle Section (scrollable) */}
+        {/* Step-by-step directions - Middle Section (scrollable, fills available space) */}
         {routeInfo && routeInfo.steps.length > 0 && (
-          <div className="flex-1 overflow-hidden px-4 py-2 min-h-0">
+          <div className="flex-1 overflow-hidden min-h-0 flex flex-col px-4 py-2">
             <StepInstructions
               steps={routeInfo.steps}
-              collapsible={true}
-              maxHeight="calc(100% - 8px)"
+              collapsible={false}
+              fillContainer={true}
             />
           </div>
         )}

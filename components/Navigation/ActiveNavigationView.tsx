@@ -278,13 +278,24 @@ export default function ActiveNavigationView({
   }, [currentLocation, processLocationUpdate]);
 
   // Keep map centered on user location during navigation
+  // Offset the center so user is in the lower third of the screen (to see more of route ahead)
   useEffect(() => {
     if (!map || !currentLocation) return;
     
+    const heading = currentLocation.heading || 0;
+    const headingRad = (heading * Math.PI) / 180;
+    
+    // Calculate offset point ahead of user based on heading
+    // This moves the visual center north of the user's actual position
+    // so the user appears in the lower third of the screen
+    const offsetDistance = 0.0015; // Approximately 150-200 meters at zoom 17
+    const offsetLat = currentLocation.latitude + offsetDistance * Math.cos(headingRad);
+    const offsetLng = currentLocation.longitude + offsetDistance * Math.sin(headingRad);
+    
     map.easeTo({
-      center: [currentLocation.longitude, currentLocation.latitude],
+      center: [offsetLng, offsetLat],
       zoom: 17,
-      bearing: currentLocation.heading || 0,
+      bearing: heading,
       pitch: 60, // Tilted view for navigation
       duration: 500,
     });

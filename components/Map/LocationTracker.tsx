@@ -11,6 +11,7 @@ interface LocationTrackerProps {
   readonly followUser?: boolean;
   readonly showAccuracyCircle?: boolean;
   readonly showPath?: boolean; // Show movement trail
+  readonly navigationMode?: boolean; // Show arrow marker for navigation
 }
 
 export default function LocationTracker({
@@ -19,11 +20,14 @@ export default function LocationTracker({
   followUser = true,
   showAccuracyCircle = true,
   showPath = true,
+  navigationMode = false,
 }: LocationTrackerProps) {
   const markerRef = useRef<mapboxgl.Marker | null>(null);
   const arrowRef = useRef<HTMLDivElement | null>(null);
+  const markerContainerRef = useRef<HTMLDivElement | null>(null);
   const pathRef = useRef<[number, number][]>([]);
   const hasCenteredRef = useRef(false); // Track if we've centered on first location
+  const lastNavigationModeRef = useRef(navigationMode);
   const sourceId = 'user-location';
   const layerId = 'user-location-circle';
   const pathSourceId = 'user-location-path';
@@ -116,6 +120,15 @@ export default function LocationTracker({
       el.appendChild(middleCircle);
       el.appendChild(arrow);
       el.appendChild(innerDot);
+      
+      // Store container reference for navigation mode updates
+      markerContainerRef.current = el;
+      
+      // Add data attributes for easy access to child elements
+      outerCircle.dataset.markerPart = 'outer';
+      middleCircle.dataset.markerPart = 'middle';
+      arrow.dataset.markerPart = 'arrow';
+      innerDot.dataset.markerPart = 'dot';
 
       // Set initial position if available, otherwise use [0, 0] as placeholder
       const initialPosition = position 
@@ -395,6 +408,66 @@ export default function LocationTracker({
   useEffect(() => {
     hasCenteredRef.current = false;
   }, [map]);
+
+  // Update marker appearance when navigation mode changes
+  useEffect(() => {
+    if (!markerContainerRef.current) return;
+    
+    const container = markerContainerRef.current;
+    const outer = container.querySelector<HTMLDivElement>('[data-marker-part="outer"]');
+    const middle = container.querySelector<HTMLDivElement>('[data-marker-part="middle"]');
+    const dot = container.querySelector<HTMLDivElement>('[data-marker-part="dot"]');
+    const arrow = container.querySelector<HTMLDivElement>('[data-marker-part="arrow"]');
+    
+    if (navigationMode) {
+      // Navigation mode: Show large arrow, hide regular marker
+      if (outer) {
+        outer.style.opacity = '0';
+      }
+      if (middle) {
+        middle.style.opacity = '0';
+      }
+      if (dot) {
+        dot.style.opacity = '0';
+      }
+      if (arrow) {
+        // Make the arrow larger and more prominent for navigation
+        arrow.style.width = '0';
+        arrow.style.height = '0';
+        arrow.style.borderLeft = '14px solid transparent';
+        arrow.style.borderRight = '14px solid transparent';
+        arrow.style.borderBottom = '35px solid #4285f4';
+        arrow.style.transform = `translate(-50%, -50%) rotate(${position?.heading || 0}deg)`;
+        arrow.style.transformOrigin = 'center center';
+        arrow.style.opacity = '1';
+        arrow.style.filter = 'drop-shadow(0 2px 4px rgba(0,0,0,0.4))';
+      }
+    } else {
+      // Normal mode: Show regular marker
+      if (outer) {
+        outer.style.opacity = '0.3';
+      }
+      if (middle) {
+        middle.style.opacity = '0.5';
+      }
+      if (dot) {
+        dot.style.opacity = '1';
+      }
+      if (arrow) {
+        // Smaller arrow that only shows with heading
+        arrow.style.borderLeft = '6px solid transparent';
+        arrow.style.borderRight = '6px solid transparent';
+        arrow.style.borderBottom = '16px solid #4285f4';
+        arrow.style.transform = `translate(-50%, -50%) translateY(-18px) rotate(${position?.heading || 0}deg)`;
+        arrow.style.transformOrigin = 'center bottom';
+        arrow.style.filter = 'none';
+        // Only show arrow if heading is available
+        arrow.style.opacity = position?.heading != null ? '1' : '0';
+      }
+    }
+    
+    lastNavigationModeRef.current = navigationMode;
+  }, [navigationMode, position?.heading]);
 
   // Auto-start tracking - don't wait for map
   useEffect(() => {

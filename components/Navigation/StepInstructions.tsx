@@ -9,6 +9,7 @@ interface StepInstructionsProps {
   readonly currentStepIndex?: number;
   readonly collapsible?: boolean;
   readonly maxHeight?: string;
+  readonly fillContainer?: boolean;
 }
 
 // Maneuver type to icon mapping
@@ -112,6 +113,7 @@ export default function StepInstructions({
   currentStepIndex = -1,
   collapsible = true,
   maxHeight = '200px',
+  fillContainer = false,
 }: StepInstructionsProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -125,10 +127,13 @@ export default function StepInstructions({
     }
   };
 
+  // Determine if steps should be shown
+  const showSteps = !collapsible || isExpanded || fillContainer;
+
   return (
-    <div className="w-full">
+    <div className={`w-full ${fillContainer ? 'h-full flex flex-col' : ''}`}>
       {/* Header - clickable to expand/collapse */}
-      {collapsible && (
+      {collapsible && !fillContainer && (
         <button
           onClick={toggleExpanded}
           className="w-full flex items-center justify-between px-3 py-2 bg-gray-50 hover:bg-gray-100 transition rounded-t-lg border border-gray-200"
@@ -171,11 +176,43 @@ export default function StepInstructions({
         </button>
       )}
 
+      {/* Header for fillContainer mode - static, not collapsible */}
+      {fillContainer && (
+        <div className="flex-shrink-0 flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-t-lg">
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="text-gray-600"
+          >
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
+            <line x1="16" y1="13" x2="8" y2="13" />
+            <line x1="16" y1="17" x2="8" y2="17" />
+            <polyline points="10 9 9 9 8 9" />
+          </svg>
+          <span className="text-sm font-medium text-gray-700">
+            Directions ({steps.length} steps)
+          </span>
+        </div>
+      )}
+
       {/* Steps list */}
-      {(!collapsible || isExpanded) && (
+      {showSteps && (
         <div
-          className={`overflow-y-auto ${collapsible ? 'border border-t-0 border-gray-200 rounded-b-lg' : ''}`}
-          style={{ maxHeight }}
+          className={`overflow-y-auto ${
+            fillContainer 
+              ? 'flex-1 border border-t-0 border-gray-200 rounded-b-lg' 
+              : collapsible 
+                ? 'border border-t-0 border-gray-200 rounded-b-lg' 
+                : ''
+          }`}
+          style={fillContainer ? undefined : { maxHeight }}
         >
           <ul className="divide-y divide-gray-100">
             {steps.map((step, index) => {
