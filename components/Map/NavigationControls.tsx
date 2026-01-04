@@ -2,12 +2,10 @@
 
 import { useState, useEffect, useRef } from 'react';
 import mapboxgl from 'mapbox-gl';
-import MapboxGeocoder from '@mapbox/mapbox-gl-geocoder';
-import '@mapbox/mapbox-gl-geocoder/dist/mapbox-gl-geocoder.css';
 import { useNavigation } from '@/hooks/useNavigation';
 import { useNavigationContext } from '@/contexts/NavigationContext';
 import { formatDistance, formatDuration } from '@/lib/location';
-import { getMapboxToken } from '@/lib/mapbox';
+import StepInstructions from '@/components/Navigation/StepInstructions';
 
 interface NavigationControlsProps {
   map: mapboxgl.Map | null;
@@ -21,13 +19,14 @@ export default function NavigationControls({
   const routeLayerRef = useRef<string | null>(null);
   const destinationMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const [destination, setDestination] = useState<string>('');
-  const { showSearch } = useNavigationContext();
+  const { showSearch, selectedLocation } = useNavigationContext();
 
   const {
     route,
     isActive,
     isCalculating,
     error,
+    currentStepIndex,
     calculateRouteToDestination,
     startNavigation,
     stopNavigation,
@@ -115,9 +114,6 @@ export default function NavigationControls({
     stopNavigation();
     clearRoute();
     setDestination('');
-    if (geocoderRef.current) {
-      geocoderRef.current.clear();
-    }
     if (destinationMarkerRef.current) {
       destinationMarkerRef.current.remove();
       destinationMarkerRef.current = null;
@@ -127,12 +123,16 @@ export default function NavigationControls({
   const remainingInfo = getRemainingInfo();
   const currentInstruction = getCurrentInstructionText();
 
+  // Hide UI panel when location is selected (SelectedLocationPanel shows route info instead)
+  // But still draw the route on the map
+  const showNavigationPanel = route && !selectedLocation;
+
   if (!route && !isCalculating) return null;
 
   return (
     <>
-      {/* Navigation Panel - Google Maps style */}
-      {route && (
+      {/* Navigation Panel - Google Maps style - Only show when no location is selected */}
+      {showNavigationPanel && (
         <div className="absolute left-4 right-4 z-10" style={{ bottom: 'calc(33.33% + 1rem)' }}>
           <div className="bg-white rounded-lg shadow-xl p-4 max-w-full">
             {isActive ? (
@@ -156,6 +156,16 @@ export default function NavigationControls({
                     End
                   </button>
                 </div>
+                
+                {/* Step-by-step instructions during active navigation */}
+                {route.steps && route.steps.length > 0 && (
+                  <StepInstructions
+                    steps={route.steps}
+                    currentStepIndex={currentStepIndex}
+                    collapsible={true}
+                    maxHeight="150px"
+                  />
+                )}
               </div>
             ) : (
               // Route Preview View

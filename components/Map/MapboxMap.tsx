@@ -81,9 +81,32 @@ export default function MapboxMap({
     }
   }, [zoom, isMapLoaded]);
 
+  // Resize map when container size changes
+  useEffect(() => {
+    if (!map.current || !isMapLoaded) return;
+
+    const resizeMap = () => {
+      if (map.current) {
+        map.current.resize();
+      }
+    };
+
+    // Resize immediately and after a short delay to handle layout changes
+    resizeMap();
+    const timeoutId = setTimeout(resizeMap, 100);
+
+    // Also listen for window resize
+    window.addEventListener('resize', resizeMap);
+
+    return () => {
+      clearTimeout(timeoutId);
+      window.removeEventListener('resize', resizeMap);
+    };
+  }, [isMapLoaded]);
+
   return (
-    <div className={`relative w-full h-full ${className}`} style={{ height: '100%' }}>
-      <div ref={mapContainer} className="w-full h-full" style={{ height: '100%' }} />
+    <div className={`relative w-full h-full ${className}`} style={{ height: '100%', width: '100%' }}>
+      <div ref={mapContainer} className="w-full h-full" style={{ height: '100%', width: '100%' }} />
       {isMapLoaded && children}
       {/* Hide Mapbox logo and attribution */}
       <style jsx global>{`

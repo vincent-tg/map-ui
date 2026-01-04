@@ -54,3 +54,69 @@ body {
 .mapboxgl-ctrl-attrib {
   display: none !important;
 }
+
+/* Slide up animation for search panel */
+@keyframes slideUp {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-up {
+  animation: slideUp 0.3s ease-out;
+}
+
+/* Ensure Mapbox SearchBox suggestions are clickable */
+.mapboxgl-ctrl-geocoder {
+  pointer-events: auto !important;
+}
+
+.mapboxgl-ctrl-geocoder .suggestions {
+  pointer-events: auto !important;
+}
+
+.mapboxgl-ctrl-geocoder .suggestions li {
+  pointer-events: auto !important;
+  cursor: pointer !important;
+}
+
+.mapboxgl-ctrl-geocoder .suggestions li a {
+  pointer-events: auto !important;
+  cursor: pointer !important;
+}
+
+/* Mapbox Search JS React styles */
+[data-mapbox-search] {
+  pointer-events: auto !important;
+}
+
+[data-mapbox-search] * {
+  pointer-events: auto !important;
+}
+
+/* Ensure search suggestions dropdown is interactive */
+.mapboxgl-ctrl-geocoder--suggestion {
+  pointer-events: auto !important;
+  cursor: pointer !important;
+}
+
+/* Hide MapboxDirections default UI controls - position off-screen but keep functional */
+.mapbox-directions-component {
+  position: absolute !important;
+  left: -9999px !important;
+  top: -9999px !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  z-index: -1 !important;
+}
+
+.mapbox-directions-route-summary {
+  display: none !important;
+}
+
+.mapbox-directions-instructions {
+  display: none !important;
+}

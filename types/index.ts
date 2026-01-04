@@ -50,6 +50,26 @@ export interface NavigationState {
   waypoints: [number, number][];
 }
 
+// Enhanced navigation types for active navigation
+export type NavigationMode = 'idle' | 'preview' | 'active';
+
+export interface ActiveNavigationState {
+  mode: NavigationMode;
+  route: NavigationRoute | null;
+  destination: {
+    coordinates: [number, number];
+    name: string;
+  } | null;
+  origin: [number, number] | null;
+  currentStepIndex: number;
+  distanceToNextManeuver: number; // meters
+  isOffRoute: boolean;
+  isRerouting: boolean;
+  eta: Date | null;
+  remainingDistance: number; // meters
+  remainingDuration: number; // seconds
+}
+
 export interface GeolocationState {
   position: LocationPoint | null;
   error: GeolocationPositionError | null;

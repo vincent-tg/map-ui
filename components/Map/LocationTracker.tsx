@@ -329,12 +329,31 @@ export default function LocationTracker({
     if (markerRef.current) {
       markerRef.current.setLngLat(lngLat);
     }
+  };
+
+  // Center on current location ONCE when map first loads and position is available
+  useEffect(() => {
+    if (!map || !position || hasCenteredRef.current) return;
     
+    // Wait for map to be loaded before centering
+    if (!map.loaded?.()) {
+      map.once('load', () => {
+        if (!hasCenteredRef.current) {
+          const lngLat: [number, number] = [position.longitude, position.latitude];
+          hasCenteredRef.current = true;
+          map.flyTo({ center: lngLat, zoom: 16, duration: 1500 });
+        }
+      });
+      return;
+    }
+
+    // Map is loaded, center immediately (only once)
     if (!hasCenteredRef.current) {
+      const lngLat: [number, number] = [position.longitude, position.latitude];
       hasCenteredRef.current = true;
       map.flyTo({ center: lngLat, zoom: 16, duration: 1500 });
     }
-  };
+  }, [map, position]);
 
   // Update marker position
   useEffect(() => {
@@ -358,28 +377,14 @@ export default function LocationTracker({
       }).setLngLat(lngLat).addTo(map);
     }
 
-    // Auto-center on first location acquisition
-    if (!hasCenteredRef.current) {
-      hasCenteredRef.current = true;
-      map.flyTo({ center: lngLat, zoom: 16, duration: 1500 });
-    }
-
     try {
       markerRef.current.setLngLat(lngLat);
       updateArrowHeading(heading);
       updateAccuracyCircle(map, lngLat, accuracy || 0, latitude);
       updateMovementPath(map, lngLat);
 
-      // Follow user if enabled - use smooth easing for real-time tracking
-      if (followUser && isTracking && hasCenteredRef.current) {
-        // Use easeTo for smoother real-time following instead of flyTo
-        map.easeTo({
-          center: lngLat,
-          zoom: Math.max(map.getZoom(), 15),
-          duration: 300, // Shorter duration for real-time feel
-          easing: (t) => t * (2 - t), // Ease-out function for smooth movement
-        });
-      }
+      // Map only centers once on first location - no continuous following
+      // User can freely look around after initial centering
     } catch (error) {
       // Map might be in the process of being removed or not fully loaded
       console.warn('Error updating location tracker:', error);
